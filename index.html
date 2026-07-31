@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A little midnight surprise for Ashley." />
+    <title>For My Ashleyyyy ✨</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <canvas id="sky" aria-hidden="true"></canvas>
+    <div class="aurora aurora--one"></div><div class="aurora aurora--two"></div>
+    <div class="cursor-glow" aria-hidden="true"></div>
+    <div id="particles" aria-hidden="true"></div>
+
+    <main>
+      <section class="landing" id="home" aria-labelledby="landing-title">
+        <p class="eyebrow">A little surprise for...</p>
+        <h1 id="landing-title">My <em>Ashleyyyy</em> <span>♥</span></h1>
+        <p class="made-by">Made with love by <strong>Shashank</strong></p>
+        <button class="enter-btn magnetic" id="enterBtn"><span>Enter our little universe</span><i>→</i></button>
+        <p class="scroll-hint">scroll to discover <b>↓</b></p>
+      </section>
+
+      <section class="love section" id="love" aria-labelledby="love-title">
+        <div class="section-heading reveal"><p class="eyebrow">01 — little things, forever things</p><h2 id="love-title">Things I <em>Love</em><br />About You</h2></div>
+        <div class="love-grid">
+          <button class="love-card reveal"><span class="card-number">01</span><span>I love your <strong>kindness.</strong></span><i>✦</i></button>
+          <button class="love-card reveal"><span class="card-number">02</span><span>I love your <strong>soul.</strong></span><i>☾</i></button>
+          <button class="love-card reveal"><span class="card-number">03</span><span>I love your <strong>heart.</strong></span><i>♡</i></button>
+          <button class="love-card reveal"><span class="card-number">04</span><span>I love your <strong>sweetness.</strong></span><i>✿</i></button>
+          <button class="love-card reveal love-card--wide"><span class="card-number">05</span><span>I love the way you <strong>love me.</strong></span><i>∞</i></button>
+        </div>
+      </section>
+
+      <section class="sevenup section" id="sevenup" aria-labelledby="sevenup-title">
+        <div class="glass joke-card reveal">
+          <p class="eyebrow">02 — an important question</p>
+          <span class="tiny-star">✦</span><span class="tiny-star tiny-star--two">✦</span>
+          <h2 id="sevenup-title">Do you want <em>7UP</em><br />at 4 AM?</h2>
+          <div class="joke-actions"><button id="noBtn" class="btn btn--quiet">No</button><button id="yesBtn" class="btn btn--pink ripple">Already on my way <span>♥</span></button></div>
+        </div>
+      </section>
+
+      <section class="gallery section" id="gallery" aria-labelledby="gallery-title">
+        <div class="section-heading reveal"><p class="eyebrow">03 — framed little moments</p><h2 id="gallery-title">A small <em>gallery</em><br />of magic</h2></div>
+        <div class="gallery-grid">
+          <button class="gallery-item gallery-item--tall reveal" data-image="assets/photos/midnight.svg" data-caption="Midnight walks and a sky full of us."><img src="assets/photos/midnight.svg" alt="Illustrated midnight sky" /><span>midnight notes</span></button>
+          <button class="gallery-item reveal" data-image="assets/photos/flowers.svg" data-caption="Soft things that make me think of you."><img src="assets/photos/flowers.svg" alt="Illustrated pink flowers" /><span>soft blooms</span></button>
+          <button class="gallery-item reveal" data-image="assets/photos/window.svg" data-caption="A quiet corner, your favorite song, and warm light."><img src="assets/photos/window.svg" alt="Illustrated window at night" /><span>quiet corners</span></button>
+          <button class="gallery-item gallery-item--wide reveal" data-image="assets/photos/stars.svg" data-caption="The stars have nothing on you."><img src="assets/photos/stars.svg" alt="Illustrated starry night" /><span>our constellation</span></button>
+        </div>
+      </section>
+
+      <section class="music section" id="music" aria-labelledby="music-title">
+        <div class="music-card glass reveal"><div class="record"><div></div></div><div class="music-copy"><p class="eyebrow">04 — tonight's slow dance</p><h2 id="music-title">Still With You</h2><p>Jung Kook</p><div class="progress"><i></i></div><a class="btn btn--pink ripple" href="https://www.youtube.com/" target="_blank" rel="noopener">Open on YouTube <span>↗</span></a></div><div class="equalizer" aria-hidden="true"><i></i><i></i><i></i><i></i></div></div>
+      </section>
+
+      <section class="letter section" id="letter" aria-labelledby="letter-title">
+        <div class="letter-wrap reveal"><p class="eyebrow">05 — a note, just for you</p><article class="glass letter-paper"><h2 id="letter-title">My Ashleyyyy, <span>♥</span></h2><div id="typewriter" aria-live="polite"></div><span class="type-caret" aria-hidden="true"></span></article></div>
+      </section>
+
+      <section class="constellation section" id="constellation" aria-labelledby="constellation-title">
+        <canvas id="constellationCanvas" aria-hidden="true"></canvas>
+        <div class="constellation-copy reveal"><p class="eyebrow">06 — written in the sky</p><h2 id="constellation-title">Among billions of stars...</h2><p>I somehow found my favorite one.</p><h3>My Ashleyyyy <span>♥</span></h3></div>
+      </section>
+
+      <section class="ending section" id="ending" aria-labelledby="ending-title">
+        <p class="eyebrow reveal">one last thing...</p>
+        <button class="final-heart reveal" id="finalHeart" aria-label="Open your final surprise">♥</button>
+        <div class="final-message" id="finalMessage" aria-live="polite"><h2 id="ending-title">Happy Girlfriend's Day <span>♥</span></h2><p>My Ashleyyyy</p><p>I love you.</p><small>Forever yours,<br /><strong>Shashank</strong></small></div>
+      </section>
+    </main>
+
+    <button id="secretStar" aria-label="A tiny secret star">✦</button>
+    <div class="overlay" id="loadingOverlay" aria-hidden="true"><div class="loader glass"><p class="eyebrow">finding something special</p><h2>Searching for...</h2><ul id="loadingList"><li>Kindness</li><li>Sweetness</li><li>Beautiful Soul</li><li>Soft Heart</li><li>My Favorite Human</li></ul><div class="load-progress"><i id="loadBar"></i></div><p id="loadPercent">0%</p><div class="match" id="match"><span>♥</span><h2>Match Found</h2><p>My Ashleyyyy</p></div></div></div>
+    <div class="overlay achievement-overlay" id="achievement" aria-hidden="true"><div class="achievement-card glass"><span>✦</span><p class="eyebrow">Achievement Unlocked</p><h2 id="achievementText">Certified 4 AM<br />7UP Supplier 🥤♥</h2><button class="btn btn--quiet" id="closeAchievement">keep this one</button></div></div>
+    <dialog id="lightbox"><button id="lightboxClose" aria-label="Close photo">×</button><img id="lightboxImage" src="" alt="" /><p id="lightboxCaption"></p></dialog>
+    <div id="celebration" aria-hidden="true"></div>
+    <script src="script.js"></script>
+  </body>
+</html>
