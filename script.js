@@ -1,45 +1,49 @@
-/* A little interactive universe, made without external dependencies. */
+const state = { regions: [], selected: null, charts: {} };
 const $ = (selector) => document.querySelector(selector);
 
-// Cursor glow and gentle parallax
-const cursor = $('.cursor-glow');
-window.addEventListener('pointermove', (event) => {
-  cursor.style.left = `${event.clientX}px`; cursor.style.top = `${event.clientY}px`;
+function fmt(value) { return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value); }
+function setSliderLabels() { $('#areaOutput').textContent = `${fmt($('#area').value)} ha`; $('#yearsOutput').textContent = `${$('#years').value} years`; $('#previewYears').textContent = `${$('#years').value} years`; }
+['area','years'].forEach(id => $(`#${id}`).addEventListener('input', setSliderLabels));
+
+async function loadRegions() {
+  const response = await fetch('/api/regions'); state.regions = await response.json();
+  const map = L.map('map', { zoomControl: false, scrollWheelZoom: false }).setView([10, 11], 2);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+  state.regions.forEach(region => {
+    const color = region.degradation_percentage >= 65 ? '#e1bd58' : '#68c474';
+    L.circleMarker([region.lat, region.lng], { radius: 8 + region.degradation_percentage / 18, color, weight: 1, fillColor: color, fillOpacity: .65 })
+      .addTo(map).bindPopup(`<b>${region.name}</b><br>${region.degradation_percentage}% degradation`) .on('click', () => selectRegion(region, map));
+  });
+  selectRegion(state.regions[0], map, false);
+}
+function selectRegion(region, map, fly = true) {
+  state.selected = region; if (fly) map.flyTo([region.lat, region.lng], 5, { duration: 1.1 });
+  $('#previewRegion').textContent = region.name;
+  $('#regionPanel').innerHTML = `<p class="eyebrow">Selected landscape</p><h3 class="region-name">${region.name}</h3><p class="region-location">${region.lat.toFixed(2)}°, ${region.lng.toFixed(2)}°</p><div class="region-grid"><div class="region-stat"><small>Degradation</small><strong>${region.degradation_percentage}%</strong></div><div class="region-stat"><small>Tree cover</small><strong>${region.current_tree_cover}%</strong></div><div class="region-stat"><small>Biodiversity</small><strong>${region.biodiversity_score}/100</strong></div><div class="region-stat"><small>Water access</small><strong>${region.water_availability}%</strong></div></div><button class="region-select" id="useRegion">Use in my scenario →</button>`;
+  $('#useRegion').addEventListener('click', () => $('#simulator').scrollIntoView({ behavior: 'smooth' }));
+}
+
+function buildChart(id, labels, datasets, options = {}) {
+  if (state.charts[id]) state.charts[id].destroy();
+  state.charts[id] = new Chart($(`#${id}`), { type: 'line', data: { labels, datasets }, options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { labels: { color: '#aac3af', boxWidth: 8, usePointStyle: true, font: { size: 10 } } } }, scales: { x: { ticks: { color: '#74907c', font: { size: 9 }, maxTicksLimit: 7 }, grid: { color: '#ffffff09' } }, y: { ticks: { color: '#74907c', font: { size: 9 } }, grid: { color: '#ffffff09' }, beginAtZero: true }, ...options.scales } } });
+}
+const line = (label, data, color, yAxisID = 'y') => ({ label, data, borderColor: color, backgroundColor: `${color}22`, yAxisID, tension: .38, fill: true, pointRadius: 0, borderWidth: 2 });
+function renderResults(data) {
+  const final = data.summary; const set = (id, value) => { const el = $(`#${id}`); el.textContent = value; el.parentElement.animate([{transform:'translateY(6px)',opacity:.5},{transform:'translateY(0)',opacity:1}], {duration:450}); };
+  set('treeMetric', `${final.tree_cover}%`); set('carbonMetric', `${fmt(final.carbon_sequestered)} t`); set('bioMetric', `${final.biodiversity_index}/100`); set('waterMetric', `${final.water_availability}%`); set('tempMetric', `−${final.temperature_reduction}°C`); set('costMetric', `$${fmt(final.total_cost)}`);
+  const labels = data.timeline.years.map(y => `Y${y}`);
+  buildChart('treeCarbonChart', labels, [line('Tree cover (%)', data.timeline.tree_cover, '#9ee66c'), line('Carbon (tCO₂)', data.timeline.carbon, '#61d5c6', 'y1')], { scales: { y: { ticks:{color:'#74907c',font:{size:9}}, grid:{color:'#ffffff09'}, min: 0, max:100 }, y1: { position:'right', ticks:{color:'#74907c',font:{size:9},callback:v=>`${Math.round(v/1000)}k`}, grid:{drawOnChartArea:false}, beginAtZero:true }, x:{ticks:{color:'#74907c',font:{size:9},maxTicksLimit:7},grid:{color:'#ffffff09'}} } });
+  buildChart('bioWaterChart', labels, [line('Biodiversity', data.timeline.biodiversity, '#e9c66e'), line('Water access (%)', data.timeline.water, '#66d9d2', 'y1')], { scales: { y:{min:0,max:100,ticks:{color:'#74907c',font:{size:9}},grid:{color:'#ffffff09'}}, y1:{position:'right',min:0,max:100,ticks:{color:'#74907c',font:{size:9}},grid:{drawOnChartArea:false}},x:{ticks:{color:'#74907c',font:{size:9},maxTicksLimit:7},grid:{color:'#ffffff09'}} } });
+  buildChart('tempChart', labels, [line('Cooling (°C)', data.timeline.temperature, '#d3b1ee')], { scales: { y:{ticks:{color:'#74907c',font:{size:9},callback:v=>`${v}°`},grid:{color:'#ffffff09'},beginAtZero:true},x:{ticks:{color:'#74907c',font:{size:9},maxTicksLimit:7},grid:{color:'#ffffff09'}} } });
+  $('#riskBars').innerHTML = Object.entries(data.risks).map(([name, r]) => `<div class="risk-row"><span class="risk-name">${name}</span><div class="risk-track"><i class="risk-current" style="width:${r.current}%"></i></div><div class="risk-track"><i class="risk-projected" style="width:${r.projected}%"></i></div><span class="risk-reduction">−${r.reduction}%</span></div>`).join('');
+  $('#costTotal').textContent = `$${fmt(final.total_cost)}`;
+  $('#costBreakdown').innerHTML = Object.entries(data.cost_breakdown).map(([key, value]) => `<div class="cost-line"><span>${key}</span><strong>$${fmt(value)}</strong></div>`).join('');
+  $('#resultStatus').textContent = `${state.selected.name} · ${data.input.years}-year ${data.input.strategy.replace('_',' ')} pathway`;
+  $('#results').classList.remove('hidden'); setTimeout(() => $('#insights').scrollIntoView({ behavior:'smooth', block:'start' }), 150);
+}
+$('#simulationForm').addEventListener('submit', async event => { event.preventDefault(); const button = $('.run-button'); button.classList.add('loading'); button.querySelector('.button-text').textContent = 'Calculating pulse…';
+  const payload = { area_hectares: +$('#area').value, strategy: $('#strategy').value, soil_type: $('#soil').value, latitude: state.selected?.lat ?? 0, longitude: state.selected?.lng ?? 0, years: +$('#years').value };
+  try { const response = await fetch('/api/simulate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); if (!response.ok) throw new Error('Simulation unavailable'); renderResults(await response.json()); } catch (error) { $('#resultStatus').textContent = 'Unable to run the simulation. Please check the server and try again.'; } finally { button.classList.remove('loading'); button.querySelector('.button-text').textContent = 'Run simulation'; }
 });
-
-// Star field
-const sky = $('#sky'), skyCtx = sky.getContext('2d'); let stars = [];
-function sizeSky(){ sky.width = innerWidth * devicePixelRatio; sky.height = innerHeight * devicePixelRatio; sky.style.width=`${innerWidth}px`; sky.style.height=`${innerHeight}px`; skyCtx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); stars=Array.from({length:Math.min(180,Math.floor(innerWidth/7))},()=>({x:Math.random()*innerWidth,y:Math.random()*innerHeight,r:Math.random()*1.3+.15,a:Math.random(),s:Math.random()*.015+.003})); }
-function drawSky(){ skyCtx.clearRect(0,0,innerWidth,innerHeight); stars.forEach(s=>{s.a+=s.s;const a=.25+Math.abs(Math.sin(s.a))*.7;skyCtx.fillStyle=`rgba(255,235,255,${a})`;skyCtx.beginPath();skyCtx.arc(s.x,s.y,s.r,0,Math.PI*2);skyCtx.fill();});requestAnimationFrame(drawSky); } sizeSky();drawSky();addEventListener('resize',sizeSky);
-
-// Background particles
-const particles = $('#particles');
-for(let i=0;i<22;i++){const dot=document.createElement('i');dot.className='particle';const size=Math.random()*3+1;dot.style.cssText=`left:${Math.random()*100}%;bottom:-20px;width:${size}px;height:${size}px;animation-duration:${9+Math.random()*14}s;animation-delay:-${Math.random()*16}s`;particles.append(dot);}
-
-// Reveal sections
-const revealObserver = new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');revealObserver.unobserve(e.target)}}),{threshold:.14}); document.querySelectorAll('.reveal').forEach(el=>revealObserver.observe(el));
-document.querySelectorAll('.love-card').forEach(card=>card.addEventListener('click',()=>card.classList.toggle('is-loved')));
-
-// Landing loading experience
-$('#enterBtn').addEventListener('click', async ()=>{const overlay=$('#loadingOverlay');overlay.classList.add('show');overlay.setAttribute('aria-hidden','false');const items=[...$('#loadingList').children];for(let i=0;i<items.length;i++){await wait(500);items[i].classList.add('done');$('#loadBar').style.width=`${(i+1)*20}%`;$('#loadPercent').textContent=`${(i+1)*20}%`;}await wait(600);$('.loader').classList.add('matched');await wait(1900);overlay.classList.remove('show');overlay.setAttribute('aria-hidden','true');document.querySelector('#love').scrollIntoView({behavior:'smooth'});});
-const wait=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
-
-// A polite runaway "No" button
-const no=$('#noBtn'); no.addEventListener('pointerenter',()=>{const x=(Math.random()-.5)*180,y=(Math.random()-.5)*110;no.style.transform=`translate(${x}px,${y}px)`;});no.addEventListener('click',()=>{no.textContent='Hmm...';no.style.transform='translate(0,0)';});
-
-function celebrate(hearts=false){const box=$('#celebration');for(let i=0;i<(hearts?180:90);i++){const piece=document.createElement('i');piece.className=hearts?'float-heart':'confetti';piece.textContent=hearts?'♥':'✦';piece.style.left=`${Math.random()*100}%`;piece.style.setProperty('--x',`${(Math.random()-.5)*260}px`);piece.style.color=['#ff70bb','#a96aff','#ffd06e','#86e7ff'][Math.floor(Math.random()*4)];piece.style.animationDuration=`${2.2+Math.random()*2.5}s`;piece.style.animationDelay=`${Math.random()*.5}s`;box.append(piece);setTimeout(()=>piece.remove(),5200);}}
-function unlock(text){$('#achievementText').innerHTML=text;$('#achievement').classList.add('show');$('#achievement').setAttribute('aria-hidden','false');celebrate();}
-$('#yesBtn').addEventListener('click',()=>unlock('Certified 4 AM<br />7UP Supplier 🥤♥'));$('#closeAchievement').addEventListener('click',()=>{$('#achievement').classList.remove('show');$('#achievement').setAttribute('aria-hidden','true');});
-
-// Gallery lightbox
-const lightbox=$('#lightbox');document.querySelectorAll('.gallery-item').forEach(item=>item.addEventListener('click',()=>{$('#lightboxImage').src=item.dataset.image;$('#lightboxImage').alt=item.querySelector('img').alt;$('#lightboxCaption').textContent=item.dataset.caption;lightbox.showModal();}));$('#lightboxClose').addEventListener('click',()=>lightbox.close());lightbox.addEventListener('click',event=>{if(event.target===lightbox)lightbox.close();});
-
-// Typewriter begins only when its letter enters view
-const letter=`Happy Girlfriend's Day ❤️\n\nI don't think words could ever fully explain what you mean to me.\n\nI love your kindness.\nI love your soul.\nI love your heart.\nI love your sweetness.\n\nMost of all...\n\nI love the way you love me.\n\nThank you for every laugh, every conversation, and every little memory we've created together.\n\nIf you ever ask for 7UP at 4 AM...\n\nI'd probably still go looking for one. ❤️\n\nI hope today reminds you how deeply loved you are.\n\nHappy Girlfriend's Day.\n\nForever yours,\n\nShashank`;
-let typed=false;const typeObserver=new IntersectionObserver(([entry])=>{if(entry.isIntersecting&&!typed){typed=true;let i=0;const output=$('#typewriter');const type=()=>{output.textContent=letter.slice(0,i++);if(i<=letter.length)setTimeout(type,letter[i-1]==='\n'?130:17);};type();typeObserver.disconnect();}},{threshold:.28});typeObserver.observe($('#letter'));
-
-// Heart constellation
-const cc=$('#constellationCanvas'), cx=cc.getContext('2d');function drawConstellation(){const rect=cc.getBoundingClientRect(),d=devicePixelRatio;cc.width=rect.width*d;cc.height=rect.height*d;cx.setTransform(d,0,0,d,0,0);const ox=rect.width/2,oy=rect.height/2-40,scale=Math.min(rect.width,rect.height)/35;const pts=[];for(let t=0;t<Math.PI*2;t+=Math.PI/13){const x=16*Math.sin(t)**3;const y=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));pts.push([ox+x*scale,oy+y*scale]);}cx.strokeStyle='rgba(222,146,255,.43)';cx.lineWidth=1;cx.beginPath();pts.forEach((p,i)=>i?cx.lineTo(...p):cx.moveTo(...p));cx.closePath();cx.stroke();pts.forEach(([x,y])=>{cx.shadowBlur=18;cx.shadowColor='#ed9ee5';cx.fillStyle='#fff0ff';cx.beginPath();cx.arc(x,y,2.6,0,7);cx.fill();});}drawConstellation();addEventListener('resize',drawConstellation);
-
-// Last surprise and secret star
-$('#finalHeart').addEventListener('click',()=>{celebrate(true);$('#finalMessage').classList.add('show');$('#finalHeart').setAttribute('aria-label','A heart full of love');});let secretClicks=0;$('#secretStar').addEventListener('click',()=>{secretClicks++;if(secretClicks===5){unlock('Unlimited Hugs<br />♥');secretClicks=0;}});
+loadRegions().catch(() => { $('#regionPanel').innerHTML = '<p class="eyebrow">Connection needed</p><p class="empty-region">Start the Flask server to load regional data.</p>'; }); setSliderLabels();
