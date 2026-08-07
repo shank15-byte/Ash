@@ -6,11 +6,11 @@ import numpy as np
 app = Flask(__name__, static_folder='.')
 
 REGIONS = [
-    {'id': 'atlantic', 'name': 'Atlantic Forest, Brazil', 'lat': -22.5, 'lng': -43.2, 'degradation_percentage': 72, 'current_tree_cover': 28, 'biodiversity_score': 41, 'water_availability': 52, 'carbon_potential': 8.4},
-    {'id': 'ghats', 'name': 'Western Ghats, India', 'lat': 11.4, 'lng': 76.8, 'degradation_percentage': 48, 'current_tree_cover': 43, 'biodiversity_score': 58, 'water_availability': 61, 'carbon_potential': 7.8},
-    {'id': 'maasai', 'name': 'Maasai Steppe, Tanzania', 'lat': -5.8, 'lng': 35.4, 'degradation_percentage': 68, 'current_tree_cover': 19, 'biodiversity_score': 35, 'water_availability': 39, 'carbon_potential': 6.2},
-    {'id': 'mekong', 'name': 'Lower Mekong, Cambodia', 'lat': 12.3, 'lng': 105.3, 'degradation_percentage': 57, 'current_tree_cover': 34, 'biodiversity_score': 46, 'water_availability': 48, 'carbon_potential': 7.1},
-    {'id': 'appalachia', 'name': 'Appalachian Foothills, USA', 'lat': 36.4, 'lng': -82.7, 'degradation_percentage': 39, 'current_tree_cover': 51, 'biodiversity_score': 63, 'water_availability': 68, 'carbon_potential': 6.8},
+    {'id': 'atlantic', 'name': 'Atlantic Forest, Brazil', 'lat': -22.5, 'lng': -43.2, 'area_hectares': 520000, 'degradation_percentage': 72, 'current_tree_cover': 28, 'biodiversity_score': 41, 'water_availability': 52, 'carbon_potential': 8.4},
+    {'id': 'ghats', 'name': 'Western Ghats, India', 'lat': 11.4, 'lng': 76.8, 'area_hectares': 350000, 'degradation_percentage': 48, 'current_tree_cover': 43, 'biodiversity_score': 58, 'water_availability': 61, 'carbon_potential': 7.8},
+    {'id': 'maasai', 'name': 'Maasai Steppe, Tanzania', 'lat': -5.8, 'lng': 35.4, 'area_hectares': 280000, 'degradation_percentage': 68, 'current_tree_cover': 19, 'biodiversity_score': 35, 'water_availability': 39, 'carbon_potential': 6.2},
+    {'id': 'mekong', 'name': 'Lower Mekong, Cambodia', 'lat': 12.3, 'lng': 105.3, 'area_hectares': 425000, 'degradation_percentage': 57, 'current_tree_cover': 34, 'biodiversity_score': 46, 'water_availability': 48, 'carbon_potential': 7.1},
+    {'id': 'appalachia', 'name': 'Appalachian Foothills, USA', 'lat': 36.4, 'lng': -82.7, 'area_hectares': 610000, 'degradation_percentage': 39, 'current_tree_cover': 51, 'biodiversity_score': 63, 'water_availability': 68, 'carbon_potential': 6.8},
 ]
 STRATEGIES = {'reforestation': {'cover': 94, 'rate': .20, 'carbon': 1.0, 'water': 23, 'cost': 3100, 'bio': 1.0}, 'natural_regrowth': {'cover': 87, 'rate': .13, 'carbon': .76, 'water': 18, 'cost': 1150, 'bio': 1.12}, 'agroforestry': {'cover': 85, 'rate': .16, 'carbon': .84, 'water': 20, 'cost': 2200, 'bio': .92}}
 SOIL = {'loamy': 1.0, 'sandy': .83, 'clay': .92}
@@ -49,7 +49,7 @@ def simulate():
     base = area * strategy['cost']; risks = {'Flood risk': (66, 66 - int(24*strategy['water']/23)), 'Drought risk': (62, 62 - int(20*strategy['water']/23)), 'Wildfire risk': (54, 54 - int(18*soil))}
     risk_results = {name: {'current': current, 'projected': max(12, projected), 'reduction': round((current-max(12,projected))/current*100)} for name,(current,projected) in risks.items()}
     breakdown = {'Site preparation': round(base*.23), 'Planting & materials': round(base*.41), 'Community stewardship': round(base*.19), 'Monitoring & maintenance': round(base*.17)}
-    return jsonify(input={'years':years,'strategy':data['strategy']}, timeline={'years':t.tolist(),'tree_cover':np.round(cover,1).tolist(),'carbon':np.round(carbon,0).tolist(),'biodiversity':np.round(biodiversity,1).tolist(),'water':np.round(water,1).tolist(),'temperature':np.round(temperature,2).tolist()}, summary={'tree_cover':round(float(cover[-1]),1),'carbon_sequestered':round(float(carbon[-1])),'biodiversity_index':round(float(biodiversity[-1])),'water_availability':round(float(water[-1])),'temperature_reduction':round(float(temperature[-1]),2),'total_cost':round(base)}, cost_breakdown=breakdown, risks=risk_results)
+    return jsonify(input={'area_hectares':area,'years':years,'strategy':data['strategy']}, timeline={'years':t.tolist(),'tree_cover':np.round(cover,1).tolist(),'carbon':np.round(carbon,0).tolist(),'biodiversity':np.round(biodiversity,1).tolist(),'water':np.round(water,1).tolist(),'temperature':np.round(temperature,2).tolist()}, summary={'tree_cover':round(float(cover[-1]),1),'carbon_sequestered':round(float(carbon[-1])),'biodiversity_index':round(float(biodiversity[-1])),'water_availability':round(float(water[-1])),'temperature_reduction':round(float(temperature[-1]),2),'total_cost':round(base)}, cost_breakdown=breakdown, risks=risk_results)
 
 if __name__ == '__main__':
     # Render supplies PORT at runtime; Gunicorn uses the `app:app` entry point

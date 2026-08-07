@@ -2,6 +2,11 @@ const state = { regions: [], selected: null, charts: {} };
 const $ = (selector) => document.querySelector(selector);
 
 function fmt(value) { return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value); }
+function million(value) { return `${(value / 1000000).toFixed(value >= 1000000 ? 1 : 2).replace(/\.0$/, '')}M`; }
+function updateHeroStats({ hectares, carbon, landscapes = state.regions.length }) {
+  const values = { 'hectares-modelled': million(hectares), 'co2-potential': `${million(carbon)}t`, 'active-landscapes': landscapes };
+  Object.entries(values).forEach(([id, value]) => { const stat = $(`#${id}`); stat.textContent = value; stat.classList.remove('is-updating'); void stat.offsetWidth; stat.classList.add('is-updating'); });
+}
 function setSliderLabels() { $('#areaOutput').textContent = `${fmt($('#area').value)} ha`; $('#yearsOutput').textContent = `${$('#years').value} years`; $('#previewYears').textContent = `${$('#years').value} years`; }
 ['area','years'].forEach(id => $(`#${id}`).addEventListener('input', setSliderLabels));
 
@@ -15,10 +20,11 @@ async function loadRegions() {
     L.circleMarker([region.lat, region.lng], { radius: 8 + region.degradation_percentage / 18, color, weight: 1, fillColor: color, fillOpacity: .65 })
       .addTo(map).bindPopup(`<b>${region.name}</b><br>${region.degradation_percentage}% degradation`) .on('click', () => selectRegion(region, map));
   });
-  selectRegion(state.regions[0], map, false);
+  selectRegion(state.regions[0], map, false, false);
 }
-function selectRegion(region, map, fly = true) {
+function selectRegion(region, map, fly = true, updateHero = true) {
   state.selected = region; if (fly) map.flyTo([region.lat, region.lng], 5, { duration: 1.1 });
+  if (updateHero) updateHeroStats({ hectares: region.area_hectares, carbon: region.area_hectares * region.carbon_potential });
   $('#previewRegion').textContent = region.name;
   $('#regionPanel').innerHTML = `<p class="eyebrow">Selected landscape</p><h3 class="region-name">${region.name}</h3><p class="region-location">${region.lat.toFixed(2)}°, ${region.lng.toFixed(2)}°</p><div class="region-grid"><div class="region-stat"><small>Degradation</small><strong>${region.degradation_percentage}%</strong></div><div class="region-stat"><small>Tree cover</small><strong>${region.current_tree_cover}%</strong></div><div class="region-stat"><small>Biodiversity</small><strong>${region.biodiversity_score}/100</strong></div><div class="region-stat"><small>Water access</small><strong>${region.water_availability}%</strong></div></div><button class="region-select" id="useRegion">Use in my scenario →</button>`;
   $('#useRegion').addEventListener('click', () => $('#simulator').scrollIntoView({ behavior: 'smooth' }));
@@ -31,6 +37,7 @@ function buildChart(id, labels, datasets, options = {}) {
 const line = (label, data, color, yAxisID = 'y') => ({ label, data, borderColor: color, backgroundColor: `${color}22`, yAxisID, tension: .38, fill: true, pointRadius: 0, borderWidth: 2 });
 function renderResults(data) {
   const final = data.summary; const set = (id, value) => { const el = $(`#${id}`); el.textContent = value; el.parentElement.animate([{transform:'translateY(6px)',opacity:.5},{transform:'translateY(0)',opacity:1}], {duration:450}); };
+  updateHeroStats({ hectares: data.input.area_hectares, carbon: final.carbon_sequestered });
   set('treeMetric', `${final.tree_cover}%`); set('carbonMetric', `${fmt(final.carbon_sequestered)} t`); set('bioMetric', `${final.biodiversity_index}/100`); set('waterMetric', `${final.water_availability}%`); set('tempMetric', `−${final.temperature_reduction}°C`); set('costMetric', `$${fmt(final.total_cost)}`);
   const labels = data.timeline.years.map(y => `Y${y}`);
   buildChart('treeCarbonChart', labels, [line('Tree cover (%)', data.timeline.tree_cover, '#9ee66c'), line('Carbon (tCO₂)', data.timeline.carbon, '#61d5c6', 'y1')], { scales: { y: { ticks:{color:'#74907c',font:{size:9}}, grid:{color:'#ffffff09'}, min: 0, max:100 }, y1: { position:'right', ticks:{color:'#74907c',font:{size:9},callback:v=>`${Math.round(v/1000)}k`}, grid:{drawOnChartArea:false}, beginAtZero:true }, x:{ticks:{color:'#74907c',font:{size:9},maxTicksLimit:7},grid:{color:'#ffffff09'}} } });
