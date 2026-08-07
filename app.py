@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, jsonify, request, send_from_directory
 import numpy as np
 
@@ -49,4 +51,11 @@ def simulate():
     breakdown = {'Site preparation': round(base*.23), 'Planting & materials': round(base*.41), 'Community stewardship': round(base*.19), 'Monitoring & maintenance': round(base*.17)}
     return jsonify(input={'years':years,'strategy':data['strategy']}, timeline={'years':t.tolist(),'tree_cover':np.round(cover,1).tolist(),'carbon':np.round(carbon,0).tolist(),'biodiversity':np.round(biodiversity,1).tolist(),'water':np.round(water,1).tolist(),'temperature':np.round(temperature,2).tolist()}, summary={'tree_cover':round(float(cover[-1]),1),'carbon_sequestered':round(float(carbon[-1])),'biodiversity_index':round(float(biodiversity[-1])),'water_availability':round(float(water[-1])),'temperature_reduction':round(float(temperature[-1]),2),'total_cost':round(base)}, cost_breakdown=breakdown, risks=risk_results)
 
-if __name__ == '__main__': app.run(debug=True, host='0.0.0.0', port=5000)
+if __name__ == '__main__':
+    # Render supplies PORT at runtime; Gunicorn uses the `app:app` entry point
+    # in production, while this remains convenient for local development.
+    app.run(
+        host='0.0.0.0',
+        port=int(os.environ.get('PORT', 5000)),
+        debug=os.environ.get('FLASK_DEBUG', '').lower() == 'true',
+    )
