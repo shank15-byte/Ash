@@ -151,10 +151,37 @@ def analyze():
 
 @app.post("/api/predict")
 def predict():
-    data = request.get_json(silent=True) or {}; title = data.get("title", "")
-    length = max(1, float(data.get("length", 9)))
-    title_bonus = min(1.3, len(words(title)) * .06) + (0.45 if any(x in title.lower() for x in ["how", "best", "secret", "tested"]) else 0)
-    rate = max(2.1, min(15.9, 5.7 + title_bonus + (1.4 if 7 <= length <= 12 else -.6)))
-    return jsonify({"engagement": round(rate, 1), "confidence": 86, "views48": int(46500 * (rate / 6.2)), "likes48": int(46500 * (rate / 6.2) * .061), "comments48": int(46500 * (rate / 6.2) * .006), "uplift": round((rate / 6.2 - 1) * 100)})
+    data = request.get_json(silent=True) or {}
+    title = str(data.get("title", "")).strip()
+    if not title:
+        return jsonify(error="A video title is required."), 400
+    try:
+        length = max(1, min(240, float(data.get("length", 9))))
+        baseline = max(1.0, min(25.0, float(data.get("channelEngagement", 6.2))))
+        avg_views = max(100, float(data.get("channelAvgViews", 46500)))
+    except (TypeError, ValueError):
+        return jsonify(error="Length and channel metrics must be valid numbers."), 400
+
+    category = str(data.get("category", "Other"))
+    thumbnail = str(data.get("thumbnail", "Face with expression"))
+    hook = str(data.get("hook", "Statement"))
+    cta = str(data.get("cta", "None"))
+    category_bonus = {"AI/Tech": .65, "Tutorial": .55, "Education": .45, "Review": .30, "Gaming": .20, "Entertainment": .15, "Vlog": -.05, "Other": 0}.get(category, 0)
+    thumbnail_bonus = {"Face with expression": .75, "Product shot": .35, "Text only": -.15, "No face": -.35}.get(thumbnail, 0)
+    hook_bonus = {"Question": .45, "Statistic": .55, "Story": .20, "Controversial": .30, "Statement": .10}.get(hook, 0)
+    cta_bonus = {"Comment": .30, "Watch next": .20, "Subscribe": .10, "Learn more": .05, "None": 0}.get(cta, 0)
+    title_bonus = min(1.2, len(words(title)) * .055) + (.4 if any(x in title.lower() for x in ["how", "best", "secret", "tested", "truth"]) else 0)
+    length_bonus = .85 if 7 <= length <= 12 else (.35 if 5 <= length <= 18 else -.55)
+    rate = max(1.2, min(18.5, baseline + title_bonus + category_bonus + thumbnail_bonus + hook_bonus + cta_bonus + length_bonus - .45))
+    uplift = round((rate / baseline - 1) * 100)
+    view_factor = max(.45, min(2.1, 1 + uplift / 125))
+    recommendations = []
+    if thumbnail == "No face": recommendations.append("Test an expressive face or a clear product close-up; both typically improve click intent.")
+    if not 7 <= length <= 12: recommendations.append("Aim for a 7–12 minute cut unless the topic needs a deeper tutorial format.")
+    if hook == "Statement": recommendations.append("Lead with a precise statistic or an audience question to create a stronger first-15-second hook.")
+    if cta == "None": recommendations.append("Add one focused comment CTA near the ending to turn positive sentiment into engagement.")
+    recommendations += [f"Frame the title around a specific {category.lower()} outcome, not just the process.", "Show the payoff before the first 12 seconds, then earn the explanation."]
+    confidence = min(94, 72 + (8 if data.get("channelAvgViews") else 0) + (5 if category != "Other" else 0))
+    return jsonify({"engagement": round(rate, 1), "confidence": confidence, "views48": int(avg_views * .55 * view_factor), "likes48": int(avg_views * .55 * view_factor * rate / 100 * .86), "comments48": int(avg_views * .55 * view_factor * rate / 100 * .12), "uplift": uplift, "summary": "Above channel average" if uplift >= 0 else "Below channel average", "recommendations": recommendations[:3]})
 
 if __name__ == "__main__": app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
