@@ -49,14 +49,16 @@ def words(text):
     return [word.lower() for word in re.findall(r"[a-zA-Z]{3,}", text) if word.lower() not in STOP_WORDS]
 
 
+def comment_label(comment):
+    tokens = words(comment)
+    score = sum(t in POSITIVE for t in tokens) - sum(t in NEGATIVE for t in tokens)
+    return "positive" if score > 0 else "negative" if score < 0 else "neutral"
+
+
 def sentiment(comments):
-    scores = []
-    for comment in comments:
-        tokens = words(comment)
-        score = sum(t in POSITIVE for t in tokens) - sum(t in NEGATIVE for t in tokens)
-        scores.append(1 if score > 0 else -1 if score < 0 else 0)
+    scores = [comment_label(comment) for comment in comments]
     total = max(len(scores), 1)
-    counts = {"positive": scores.count(1), "neutral": scores.count(0), "negative": scores.count(-1)}
+    counts = {"positive": scores.count("positive"), "neutral": scores.count("neutral"), "negative": scores.count("negative")}
     return {key: round(value * 100 / total) for key, value in counts.items()}
 
 
@@ -81,7 +83,7 @@ def build_analysis(channel, videos, comments, source):
         {"topic": "Short-form storytelling", "volume": "22.1K", "difficulty": "High", "opportunity": "High"},
         {"topic": "Audience Q&A deep dive", "volume": "7.8K", "difficulty": "Low", "opportunity": "Medium"},
     ]
-    return {"source": source, "channel": channel, "videos": videos, "metrics": {"views": views, "subscribers": channel["subscribers"], "avgViews": round(views / max(len(videos), 1)), "engagement": round(engagement, 2)}, "sentiment": sent, "wordCloud": {"positive": [w for w, _ in positive_words] or ["helpful", "great", "love"], "negative": [w for w, _ in negative_words] or ["slow", "confusing", "boring"]}, "trend": trend, "keywords": [w for w, _ in keyword_counts], "gaps": gaps, "prescriptions": prescriptions(engagement, sent, videos)}
+    return {"source": source, "channel": channel, "videos": videos, "metrics": {"views": views, "subscribers": channel["subscribers"], "avgViews": round(views / max(len(videos), 1)), "engagement": round(engagement, 2)}, "sentiment": sent, "comments": [{"text": comment, "sentiment": comment_label(comment)} for comment in comments[:6]], "wordCloud": {"positive": [w for w, _ in positive_words] or ["helpful", "great", "love"], "negative": [w for w, _ in negative_words] or ["slow", "confusing", "boring"]}, "trend": trend, "keywords": [w for w, _ in keyword_counts], "gaps": gaps, "prescriptions": prescriptions(engagement, sent, videos)}
 
 
 def prescriptions(engagement, sent, videos):
