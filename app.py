@@ -1,61 +1,158 @@
-import os
+"""The Content Surgeon API.
+
+Set YOUTUBE_API_KEY to enable live analysis of public YouTube channels. The
+application intentionally falls back to deterministic demo data so it remains
+presentable without credentials or when YouTube quotas are exhausted.
+"""
+import json, os, re, urllib.parse, urllib.request
+from collections import Counter
 
 from flask import Flask, jsonify, request, send_from_directory
-import numpy as np
 
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, static_folder=".")
+YOUTUBE_API = "https://www.googleapis.com/youtube/v3"
+STOP_WORDS = set("the and for with that this your from into about how what why are was you our their video videos a an to of in on is it at by as be or we i my".split())
+POSITIVE = set("great amazing helpful love excellent awesome best clear useful inspiring brilliant thanks good".split())
+NEGATIVE = set("bad boring confusing poor slow worst disappointed annoying fake useless".split())
 
-REGIONS = [
-    {'id': 'atlantic', 'name': 'Atlantic Forest, Brazil', 'lat': -22.5, 'lng': -43.2, 'area_hectares': 520000, 'degradation_percentage': 72, 'current_tree_cover': 28, 'biodiversity_score': 41, 'water_availability': 52, 'carbon_potential': 8.4},
-    {'id': 'ghats', 'name': 'Western Ghats, India', 'lat': 11.4, 'lng': 76.8, 'area_hectares': 350000, 'degradation_percentage': 48, 'current_tree_cover': 43, 'biodiversity_score': 58, 'water_availability': 61, 'carbon_potential': 7.8},
-    {'id': 'maasai', 'name': 'Maasai Steppe, Tanzania', 'lat': -5.8, 'lng': 35.4, 'area_hectares': 280000, 'degradation_percentage': 68, 'current_tree_cover': 19, 'biodiversity_score': 35, 'water_availability': 39, 'carbon_potential': 6.2},
-    {'id': 'mekong', 'name': 'Lower Mekong, Cambodia', 'lat': 12.3, 'lng': 105.3, 'area_hectares': 425000, 'degradation_percentage': 57, 'current_tree_cover': 34, 'biodiversity_score': 46, 'water_availability': 48, 'carbon_potential': 7.1},
-    {'id': 'appalachia', 'name': 'Appalachian Foothills, USA', 'lat': 36.4, 'lng': -82.7, 'area_hectares': 610000, 'degradation_percentage': 39, 'current_tree_cover': 51, 'biodiversity_score': 63, 'water_availability': 68, 'carbon_potential': 6.8},
-]
-STRATEGIES = {'reforestation': {'cover': 94, 'rate': .20, 'carbon': 1.0, 'water': 23, 'cost': 3100, 'bio': 1.0}, 'natural_regrowth': {'cover': 87, 'rate': .13, 'carbon': .76, 'water': 18, 'cost': 1150, 'bio': 1.12}, 'agroforestry': {'cover': 85, 'rate': .16, 'carbon': .84, 'water': 20, 'cost': 2200, 'bio': .92}}
-SOIL = {'loamy': 1.0, 'sandy': .83, 'clay': .92}
 
-@app.get('/')
-def index(): return send_from_directory('.', 'index.html')
+def api_get(resource, **params):
+    key = os.environ.get("YOUTUBE_API_KEY")
+    if not key:
+        raise RuntimeError("YOUTUBE_API_KEY is not configured")
+    params["key"] = key
+    url = f"{YOUTUBE_API}/{resource}?{urllib.parse.urlencode(params)}"
+    try:
+        with urllib.request.urlopen(url, timeout=12) as response:
+            return json.load(response)
+    except Exception as exc:
+        raise RuntimeError("YouTube could not return channel data. Check the API key and try again.") from exc
 
-@app.get('/<path:filename>')
-def public_asset(filename):
-    """Serve the single-page application's root-level public assets."""
-    if filename not in {'style.css', 'script.js'}:
-        return jsonify(error='Not found'), 404
-    return send_from_directory('.', filename)
 
-@app.get('/api/regions')
-def regions(): return jsonify(REGIONS)
+def channel_id_from_input(value):
+    value = value.strip()
+    if value.startswith("UC") and len(value) >= 20:
+        return value
+    path = urllib.parse.urlparse(value if "://" in value else "https://youtube.com/" + value).path.strip("/")
+    if path.startswith("channel/"):
+        return path.split("/")[1]
+    if path.startswith("@"):
+        data = api_get("channels", part="id", forHandle=path[1:])
+    else:
+        query = path.split("/")[-1] or value
+        data = api_get("search", part="snippet", q=query, type="channel", maxResults=1)
+        return data["items"][0]["snippet"]["channelId"] if data.get("items") else None
+    return data["items"][0]["id"] if data.get("items") else None
 
-@app.post('/api/restoration-cost')
-def restoration_cost():
-    data = request.get_json(force=True); area = max(1, int(data.get('area_hectares', 1))); strategy = STRATEGIES.get(data.get('strategy'), STRATEGIES['reforestation'])
-    base = area * strategy['cost']; return jsonify(cost_breakdown={'Site preparation': round(base*.23), 'Planting & materials': round(base*.41), 'Community stewardship': round(base*.19), 'Monitoring & maintenance': round(base*.17)}, total_cost=round(base))
 
-@app.post('/api/simulate')
-def simulate():
-    data = request.get_json(force=True); required = ['area_hectares','strategy','soil_type','latitude','longitude','years']
-    if any(key not in data for key in required): return jsonify(error='Missing simulation inputs'), 400
-    try: area, years = int(data['area_hectares']), int(data['years']); strategy = STRATEGIES[data['strategy']]; soil = SOIL[data['soil_type']]
-    except (ValueError, KeyError, TypeError): return jsonify(error='Invalid simulation inputs'), 400
-    if not 10 <= area <= 100000 or not 1 <= years <= 100: return jsonify(error='Inputs outside supported range'), 400
-    t = np.arange(0, years + 1); start, maximum = 30, strategy['cover']
-    logistic = 1 / (1 + np.exp(-strategy['rate'] * soil * (t - years*.36)))
-    cover = start + (maximum-start) * (logistic-logistic[0])/(logistic[-1]-logistic[0])
-    annual_carbon = (cover/100)**1.55 * 8.2 * soil * strategy['carbon'] * area
-    carbon = np.cumsum(annual_carbon); biodiversity = 32 + 61 * strategy['bio'] * (1/(1+np.exp(-.19*soil*(t-years*.40))))
-    biodiversity = np.minimum(98, biodiversity); water = 48 + strategy['water'] * (cover-start)/(maximum-start); temperature = 1.85 * (cover-start)/(maximum-start) * soil
-    base = area * strategy['cost']; risks = {'Flood risk': (66, 66 - int(24*strategy['water']/23)), 'Drought risk': (62, 62 - int(20*strategy['water']/23)), 'Wildfire risk': (54, 54 - int(18*soil))}
-    risk_results = {name: {'current': current, 'projected': max(12, projected), 'reduction': round((current-max(12,projected))/current*100)} for name,(current,projected) in risks.items()}
-    breakdown = {'Site preparation': round(base*.23), 'Planting & materials': round(base*.41), 'Community stewardship': round(base*.19), 'Monitoring & maintenance': round(base*.17)}
-    return jsonify(input={'area_hectares':area,'years':years,'strategy':data['strategy']}, timeline={'years':t.tolist(),'tree_cover':np.round(cover,1).tolist(),'carbon':np.round(carbon,0).tolist(),'biodiversity':np.round(biodiversity,1).tolist(),'water':np.round(water,1).tolist(),'temperature':np.round(temperature,2).tolist()}, summary={'tree_cover':round(float(cover[-1]),1),'carbon_sequestered':round(float(carbon[-1])),'biodiversity_index':round(float(biodiversity[-1])),'water_availability':round(float(water[-1])),'temperature_reduction':round(float(temperature[-1]),2),'total_cost':round(base)}, cost_breakdown=breakdown, risks=risk_results)
+def words(text):
+    return [word.lower() for word in re.findall(r"[a-zA-Z]{3,}", text) if word.lower() not in STOP_WORDS]
 
-if __name__ == '__main__':
-    # Render supplies PORT at runtime; Gunicorn uses the `app:app` entry point
-    # in production, while this remains convenient for local development.
-    app.run(
-        host='0.0.0.0',
-        port=int(os.environ.get('PORT', 5000)),
-        debug=os.environ.get('FLASK_DEBUG', '').lower() == 'true',
-    )
+
+def sentiment(comments):
+    scores = []
+    for comment in comments:
+        tokens = words(comment)
+        score = sum(t in POSITIVE for t in tokens) - sum(t in NEGATIVE for t in tokens)
+        scores.append(1 if score > 0 else -1 if score < 0 else 0)
+    total = max(len(scores), 1)
+    counts = {"positive": scores.count(1), "neutral": scores.count(0), "negative": scores.count(-1)}
+    return {key: round(value * 100 / total) for key, value in counts.items()}
+
+
+def build_analysis(channel, videos, comments, source):
+    videos = videos[:10]
+    views = sum(v["views"] for v in videos)
+    likes, comment_count = sum(v["likes"] for v in videos), sum(v["comments"] for v in videos)
+    engagement = (likes + comment_count) * 100 / max(views, 1)
+    sent = sentiment(comments)
+    positive_words = Counter(w for c in comments for w in words(c) if w in POSITIVE).most_common(6)
+    negative_words = Counter(w for c in comments for w in words(c) if w in NEGATIVE).most_common(6)
+    keyword_counts = Counter(w for v in videos for w in words(v["title"] + " " + v["description"])).most_common(12)
+    trend = []
+    for video in reversed(videos):
+        title_words = words(video["title"])
+        score = 58 + sum(w in POSITIVE for w in title_words) * 6 - sum(w in NEGATIVE for w in title_words) * 5
+        trend.append({"name": video["title"][:14] + "…", "score": score})
+    gaps = [
+        {"topic": "AI workflow shortcuts", "volume": "18.2K", "difficulty": "Low", "opportunity": "High"},
+        {"topic": "Creator monetization playbook", "volume": "12.9K", "difficulty": "Medium", "opportunity": "High"},
+        {"topic": "Behind-the-scenes teardown", "volume": "9.4K", "difficulty": "Low", "opportunity": "Medium"},
+        {"topic": "Short-form storytelling", "volume": "22.1K", "difficulty": "High", "opportunity": "High"},
+        {"topic": "Audience Q&A deep dive", "volume": "7.8K", "difficulty": "Low", "opportunity": "Medium"},
+    ]
+    return {"source": source, "channel": channel, "videos": videos, "metrics": {"views": views, "subscribers": channel["subscribers"], "avgViews": round(views / max(len(videos), 1)), "engagement": round(engagement, 2)}, "sentiment": sent, "wordCloud": {"positive": [w for w, _ in positive_words] or ["helpful", "great", "love"], "negative": [w for w, _ in negative_words] or ["slow", "confusing", "boring"]}, "trend": trend, "keywords": [w for w, _ in keyword_counts], "gaps": gaps, "prescriptions": prescriptions(engagement, sent, videos)}
+
+
+def prescriptions(engagement, sent, videos):
+    avg_duration = sum(v["duration"] for v in videos) / max(len(videos), 1)
+    return [
+        {"priority": "HIGH", "title": "Lead with the payoff", "detail": "Open with the finished result in the first 12 seconds to reduce early drop-off."},
+        {"priority": "HIGH", "title": "Use a clearer emotional thumbnail", "detail": "Pair one expressive face with 3–5 words of outcome-focused text for stronger click intent."},
+        {"priority": "MED", "title": "Tune your video length", "detail": f"Your recent average is {avg_duration:.1f} minutes. Test a tighter 7–9 minute cut on the next upload."},
+        {"priority": "MED", "title": "Schedule a midweek release", "detail": "Publish Wednesday between 2–4 PM ET, then engage in comments during the first hour."},
+        {"priority": "LOW", "title": "Invite a specific conversation", "detail": f"Your audience sentiment is {sent['positive']}% positive. End with one concrete question to increase replies."},
+    ]
+
+
+def demo_data():
+    base = [
+        ("I tested 7 AI tools creators actually need", 182400, 14280, 980, 9.2), ("How I plan a month of videos in one hour", 142800, 10900, 760, 11.5),
+        ("The truth about growing on YouTube in 2026", 231600, 17620, 1420, 13.1), ("My editing workflow, completely rebuilt", 98500, 7200, 510, 8.4),
+        ("Stop making these thumbnail mistakes", 195200, 15800, 1200, 10.0), ("I made 30 Shorts in a weekend", 121400, 8600, 630, 7.7),
+        ("A better system for creator burnout", 88400, 6900, 490, 12.4), ("The YouTube strategy nobody talks about", 167900, 12900, 880, 10.8),
+        ("Building a sustainable creator business", 110300, 8500, 620, 14.0), ("What I would do starting from zero", 256100, 20100, 1680, 12.1),
+    ]
+    videos = [{"id": f"demo{i}", "title": t, "description": "Practical creator systems, YouTube strategy and sustainable growth.", "views": v, "likes": l, "comments": c, "duration": d, "published": f"2026-0{(i % 7) + 1}-12"} for i, (t, v, l, c, d) in enumerate(base)]
+    comments = ["This is incredibly helpful and clear", "Great workflow, love the practical tips", "Amazing breakdown, thank you", "The pacing felt slow in the middle", "Useful advice for new creators", "This is the best creator guide", "A little confusing but still good"] * 12
+    return {"name": "Creator Lab", "handle": "@creatorlab", "subscribers": 184200, "thumbnail": ""}, videos, comments
+
+
+def live_data(value):
+    channel_id = channel_id_from_input(value)
+    if not channel_id: raise RuntimeError("Channel not found. Paste a channel URL, @handle, or channel ID.")
+    raw_channel = api_get("channels", part="snippet,statistics", id=channel_id)["items"][0]
+    search = api_get("search", part="snippet", channelId=channel_id, type="video", order="date", maxResults=10)
+    ids = ",".join(x["id"]["videoId"] for x in search.get("items", []))
+    detail = api_get("videos", part="snippet,statistics,contentDetails", id=ids).get("items", [])
+    videos, comments = [], []
+    for item in detail:
+        stat, snip = item.get("statistics", {}), item["snippet"]
+        duration = re.findall(r"\d+", item.get("contentDetails", {}).get("duration", "PT0M")); minutes = int(duration[0]) if duration else 0
+        videos.append({"id": item["id"], "title": snip["title"], "description": snip.get("description", ""), "views": int(stat.get("viewCount", 0)), "likes": int(stat.get("likeCount", 0)), "comments": int(stat.get("commentCount", 0)), "duration": minutes, "published": snip["publishedAt"][:10]})
+        try:
+            thread = api_get("commentThreads", part="snippet", videoId=item["id"], maxResults=10, textFormat="plainText")
+            comments += [x["snippet"]["topLevelComment"]["snippet"]["textDisplay"] for x in thread.get("items", [])]
+        except RuntimeError: pass
+    return {"name": raw_channel["snippet"]["title"], "handle": raw_channel["snippet"].get("customUrl", ""), "subscribers": int(raw_channel["statistics"].get("subscriberCount", 0)), "thumbnail": raw_channel["snippet"]["thumbnails"].get("medium", {}).get("url", "")}, videos, comments
+
+
+@app.get("/")
+def index(): return send_from_directory(".", "index.html")
+
+@app.get("/<path:filename>")
+def asset(filename):
+    if filename in {"style.css", "script.js"}: return send_from_directory(".", filename)
+    return jsonify(error="Not found"), 404
+
+@app.post("/api/analyze")
+def analyze():
+    value = (request.get_json(silent=True) or {}).get("channel", "")
+    try:
+        channel, videos, comments = live_data(value)
+        return jsonify(build_analysis(channel, videos, comments, "live"))
+    except Exception as exc:
+        channel, videos, comments = demo_data()
+        result = build_analysis(channel, videos, comments, "demo")
+        result["notice"] = str(exc) if value else "Showing demo data — add a channel URL to analyze live data."
+        return jsonify(result)
+
+@app.post("/api/predict")
+def predict():
+    data = request.get_json(silent=True) or {}; title = data.get("title", "")
+    length = max(1, float(data.get("length", 9)))
+    title_bonus = min(1.3, len(words(title)) * .06) + (0.45 if any(x in title.lower() for x in ["how", "best", "secret", "tested"]) else 0)
+    rate = max(2.1, min(15.9, 5.7 + title_bonus + (1.4 if 7 <= length <= 12 else -.6)))
+    return jsonify({"engagement": round(rate, 1), "confidence": 86, "views48": int(46500 * (rate / 6.2)), "likes48": int(46500 * (rate / 6.2) * .061), "comments48": int(46500 * (rate / 6.2) * .006), "uplift": round((rate / 6.2 - 1) * 100)})
+
+if __name__ == "__main__": app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
